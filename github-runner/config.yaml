@@ -1,0 +1,25 @@
+name: GitHub Actions Runner
+version: "1.0.0"
+slug: github-runner
+description: Self-hosted GitHub Actions runner for your repositories
+url: https://github.com/fzoll/ha-addons
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+init: false
+options:
+  access_token: ""
+  repos:
+    - fzoll/tellmemore
+    - fzoll/bevasarlas
+    - fzoll/RPI_Hermes
+  runner_name: ha-rpi5
+  labels: self-hosted,linux,arm64,rpi5
+schema:
+  access_token: password
+  repos:
+    - str
+  runner_name: str
+  labels: str
