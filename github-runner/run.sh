@@ -14,14 +14,22 @@ fi
 
 RUNNER_DIR="/home/runner"
 PIDS=()
-INDEX=0
 
+# Single runner process handles one repo at a time.
+# For multiple repos, we run separate runner processes with separate config dirs.
+INDEX=0
 for REPO in $REPOS; do
   INDEX=$((INDEX + 1))
   WORK_DIR="/tmp/runner/${REPO##*/}"
-  CONF_DIR="${RUNNER_DIR}/instances/${INDEX}"
+  INST_DIR="/data/runner-${INDEX}"
 
-  mkdir -p "$WORK_DIR" "$CONF_DIR"
+  mkdir -p "$WORK_DIR" "$INST_DIR"
+
+  # Copy full runner if not already there
+  if [ ! -f "$INST_DIR/config.sh" ]; then
+    echo "Copying runner binaries to instance ${INDEX} ..."
+    cp -a "${RUNNER_DIR}/." "$INST_DIR/"
+  fi
 
   echo "Registering runner for ${REPO} ..."
 
@@ -32,25 +40,23 @@ for REPO in $REPOS; do
 
   if [ -z "$REG_TOKEN" ] || [ "$REG_TOKEN" = "null" ]; then
     echo "ERROR: Failed to get registration token for ${REPO}"
-    echo "Check that access_token has 'repo' scope"
     continue
   fi
 
   INSTANCE_NAME="${RUNNER_NAME}-${REPO##*/}"
 
-  cp -r "${RUNNER_DIR}/bin" "${CONF_DIR}/"
-
-  "${CONF_DIR}/bin/Runner.Listener" configure \
+  cd "$INST_DIR"
+  ./config.sh \
     --url "https://github.com/${REPO}" \
     --token "$REG_TOKEN" \
     --name "$INSTANCE_NAME" \
     --labels "$LABELS" \
     --work "$WORK_DIR" \
     --unattended \
-    --replace 2>&1 || true
+    --replace 2>&1
 
   echo "Starting runner for ${REPO} as ${INSTANCE_NAME} ..."
-  "${CONF_DIR}/bin/Runner.Listener" run &
+  ./run.sh &
   PIDS+=($!)
 done
 
@@ -66,24 +72,9 @@ cleanup() {
   for PID in "${PIDS[@]}"; do
     kill "$PID" 2>/dev/null || true
   done
-
-  INDEX=0
-  for REPO in $REPOS; do
-    INDEX=$((INDEX + 1))
-    CONF_DIR="${RUNNER_DIR}/instances/${INDEX}"
-
-    REG_TOKEN=$(curl -s -X POST \
-      -H "Authorization: Bearer ${ACCESS_TOKEN}" \
-      -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${REPO}/actions/runners/registration-token" | jq -r .token)
-
-    "${CONF_DIR}/bin/Runner.Listener" remove --token "$REG_TOKEN" 2>/dev/null || true
-  done
-
   echo "Cleanup done"
 }
 
 trap cleanup SIGTERM SIGINT
 
-wait -n
-exit $?
+wait
