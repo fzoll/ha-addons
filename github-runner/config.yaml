@@ -1,5 +1,5 @@
 name: GitHub Actions Runner
-version: "1.0.3"
+version: "1.0.4"
 slug: github-runner
 description: Self-hosted GitHub Actions runner for your repositories
 url: https://github.com/fzoll/ha-addons
