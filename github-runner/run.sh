@@ -12,24 +12,23 @@ if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   exit 1
 fi
 
+# Clean stale dirs from previous versions
+rm -rf /data/instances /data/runner-*
+
 RUNNER_DIR="/home/runner"
+export RUNNER_ALLOW_RUNASROOT=1
 PIDS=()
 
-# Single runner process handles one repo at a time.
-# For multiple repos, we run separate runner processes with separate config dirs.
 INDEX=0
 for REPO in $REPOS; do
   INDEX=$((INDEX + 1))
   WORK_DIR="/tmp/runner/${REPO##*/}"
   INST_DIR="/data/runner-${INDEX}"
 
-  mkdir -p "$WORK_DIR" "$INST_DIR"
+  mkdir -p "$WORK_DIR"
 
-  # Copy full runner if not already there
-  if [ ! -f "$INST_DIR/config.sh" ]; then
-    echo "Copying runner binaries to instance ${INDEX} ..."
-    cp -a "${RUNNER_DIR}/." "$INST_DIR/"
-  fi
+  echo "Copying runner binaries to instance ${INDEX} ..."
+  cp -a "${RUNNER_DIR}/." "$INST_DIR/"
 
   echo "Registering runner for ${REPO} ..."
 
