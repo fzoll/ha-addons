@@ -5,7 +5,7 @@ ARG RUNNER_VERSION=2.325.0
 
 RUN apk add --no-cache \
     bash curl jq git docker-cli nodejs npm \
-    icu-libs lttng-ust krb5-libs zlib openssl-libs
+    icu-libs lttng-ust krb5-libs zlib libssl3
 
 WORKDIR /home/runner
 
