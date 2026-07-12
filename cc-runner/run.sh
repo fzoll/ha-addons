@@ -31,15 +31,24 @@ if [ -z "$GH_TOKEN" ] || [ "$GH_TOKEN" = "null" ]; then
 fi
 
 CC_RUNNER_DIR="/data/cc_runner"
-REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/fzoll/cc_runner.git"
+REPO_URL="https://github.com/fzoll/cc_runner.git"
+AUTH="Authorization: Basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+
+git_auth() {
+  GIT_CONFIG_COUNT=1 \
+  GIT_CONFIG_KEY_0=http.extraheader \
+  GIT_CONFIG_VALUE_0="$AUTH" \
+    git "$@"
+}
 
 if [ ! -d "$CC_RUNNER_DIR/.git" ]; then
   echo "Cloning cc_runner (first run)..."
-  git clone --depth=1 "$REPO_URL" "$CC_RUNNER_DIR"
+  git_auth clone --depth=1 "$REPO_URL" "$CC_RUNNER_DIR"
 else
   echo "Updating cc_runner..."
+  # Heals installs that already have a tokenized URL persisted
   git -C "$CC_RUNNER_DIR" remote set-url origin "$REPO_URL"
-  git -C "$CC_RUNNER_DIR" fetch --depth=1 origin
+  git_auth -C "$CC_RUNNER_DIR" fetch --depth=1 origin
   git -C "$CC_RUNNER_DIR" reset --hard origin/HEAD
 fi
 
