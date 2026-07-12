@@ -10,6 +10,17 @@ isolated Docker containers on the host, alongside standalone runners on RPi/Mac/
 - A runner token issued by the server admin via `POST /api/runner-tokens`.
 - Home Assistant OS or Supervisor with Docker (the add-on needs `docker_api: true` to spawn
   executor containers).
+- **Protection mode must be disabled** on the add-on's Info page. `docker_api: true` alone
+  grants read-only Docker access; pulling the executor image and starting containers are
+  write operations and fail silently without this.
+
+## Executor image
+
+The agent pulls `executor_image` from ghcr.io on demand (and re-pulls after self-updates).
+If the package is private, store a GitHub token with `read:packages` scope in the CC Runner
+server vault under the key `ghcr_token` — the agent fetches it with its runner token. If the
+package is public, no token is needed. The published image must match this host's
+architecture (aarch64/amd64).
 
 ## Configuration
 
@@ -29,5 +40,5 @@ If `gh_token` is left blank, the add-on fetches it from the CC Runner server's s
 
 On startup, the add-on clones (or updates) `fzoll/cc_runner` into `/data/cc_runner`, builds the
 runner package, and starts it. Task results pending delivery to the server are buffered in
-`/data/pending` and survive add-on restarts. Since `/data` is persistent, restarts only re-fetch
-and rebuild when the cached source is missing.
+`/data/pending` and survive add-on restarts. The source is fetched and rebuilt on every start;
+`/data` persistence only saves the initial clone.
