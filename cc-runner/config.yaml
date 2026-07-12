@@ -1,0 +1,27 @@
+name: CC Runner Agent
+version: "0.1.0"
+slug: cc-runner
+description: Claude Code runner agent — connects to a CC Runner server and executes tasks in Docker containers
+url: https://github.com/fzoll/ha-addons
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+init: false
+# Needed to spawn cc-executor containers on the host Docker daemon
+docker_api: true
+options:
+  server_url: ""
+  runner_token: ""
+  runner_name: "ha-runner"
+  max_slots: 1
+  executor_image: "ghcr.io/fzoll/cc_runner/cc-executor:latest"
+  gh_token: ""
+schema:
+  server_url: url
+  runner_token: password
+  runner_name: str
+  max_slots: "int(1,8)"
+  executor_image: str
+  gh_token: password
