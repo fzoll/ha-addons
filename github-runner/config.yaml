@@ -1,5 +1,5 @@
 name: GitHub Actions Runner
-version: "1.0.5"
+version: "1.1.0"
 slug: github-runner
 description: Self-hosted GitHub Actions runner for your repositories
 url: https://github.com/fzoll/ha-addons
@@ -13,7 +13,7 @@ options:
   access_token: ""
   repos: []
   runner_name: ha-runner
-  labels: self-hosted,linux,arm64
+  labels: ""
 schema:
   access_token: password
   repos:
