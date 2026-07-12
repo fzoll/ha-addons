@@ -1,5 +1,5 @@
 name: CC Runner Agent
-version: "0.1.0"
+version: "0.1.1"
 slug: cc-runner
 description: Claude Code runner agent — connects to a CC Runner server and executes tasks in Docker containers
 url: https://github.com/fzoll/ha-addons
