@@ -68,4 +68,21 @@ export EXECUTOR_IMAGE
 export PENDING_DIR="/data/pending"
 mkdir -p "$PENDING_DIR"
 
-exec node apps/runner/dist/index.js
+# The agent's self-update runs `git pull` itself; give its git invocations the
+# same per-process auth header (env only, never written to .git/config).
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=http.extraheader
+export GIT_CONFIG_VALUE_0="$AUTH"
+
+# Self-update exits 0 after pulling+rebuilding new source — restart the agent
+# instead of letting the container stop. SIGTERM still shuts down cleanly.
+AGENT_PID=""
+trap 'kill "$AGENT_PID" 2>/dev/null; wait "$AGENT_PID" 2>/dev/null; exit 0' SIGTERM SIGINT
+
+while true; do
+  node apps/runner/dist/index.js &
+  AGENT_PID=$!
+  wait "$AGENT_PID" && EXIT=0 || EXIT=$?
+  echo "Agent exited (code ${EXIT}), restarting in 3s..."
+  sleep 3
+done
