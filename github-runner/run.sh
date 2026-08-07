@@ -68,6 +68,14 @@ for REPO in $REPOS; do
       CONFIG_ARGS+=(--labels "$LABELS")
     fi
 
+    if [ -f .runner ]; then
+      # config.sh refuses to run while a local registration exists, even with
+      # --replace (that flag only resolves the server-side name collision).
+      # Drop the stale local registration so the new fingerprint can register.
+      echo "Config changed for ${REPO}, removing local registration before re-register ..."
+      rm -f .runner .credentials .credentials_rsaparams
+    fi
+
     if ! ./config.sh "${CONFIG_ARGS[@]}" 2>&1; then
       echo "ERROR: config.sh failed for ${REPO}, skipping"
       continue
