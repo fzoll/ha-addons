@@ -12,6 +12,11 @@ if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
   exit 1
 fi
 
+if [ -z "$LABELS" ] || [ "$LABELS" = "null" ]; then
+  echo "WARNING: labels is empty. The runner will only get the automatic self-hosted/linux/arch labels;" \
+       "any workflow whose runs-on names a custom label will never match this runner."
+fi
+
 RUNNER_DIR="/home/runner"
 export RUNNER_ALLOW_RUNASROOT=1
 PIDS=()
@@ -32,9 +37,12 @@ for REPO in $REPOS; do
 
   cd "$INST_DIR"
 
-  # Registration credentials persist in $INST_DIR, so a runner only
-  # registers once; restarts reuse them and work even if the PAT expired.
-  if [ ! -f .runner ]; then
+  # Registration credentials persist in $INST_DIR, so restarts normally reuse
+  # them and keep working even if the PAT expired. But re-register whenever
+  # runner_name/labels changed since the last registration, so config edits
+  # actually take effect (--replace below swaps the old entry cleanly).
+  FINGERPRINT="${INSTANCE_NAME}|${LABELS}"
+  if [ ! -f .runner ] || [ "$(cat .addon-config 2>/dev/null)" != "$FINGERPRINT" ]; then
     echo "Registering runner for ${REPO} ..."
 
     REG_TOKEN=$(curl -s -X POST \
@@ -64,6 +72,7 @@ for REPO in $REPOS; do
       echo "ERROR: config.sh failed for ${REPO}, skipping"
       continue
     fi
+    echo "$FINGERPRINT" > .addon-config
   else
     echo "Reusing existing registration for ${REPO}"
   fi
