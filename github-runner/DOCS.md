@@ -44,13 +44,16 @@ so that workflows from forks cannot run on self-hosted runners.
 | `access_token` | GitHub token used to fetch runner registration tokens. Only needed at first registration per repository. |
 | `repos` | List of `owner/repo` entries. One runner is started per repository. |
 | `runner_name` | Base name; the runner appears as `<runner_name>-<owner>-<repo>`. |
-| `labels` | Extra comma-separated labels. Leave empty — the runner automatically gets `self-hosted`, `linux` and its architecture (`X64`/`ARM64`) as labels. |
+| `labels` | Extra comma-separated labels, e.g. `ci,rpi5`. Must match the `runs-on` labels used by the workflows you want this runner to pick up — `self-hosted`, `linux` and the architecture (`X64`/`ARM64`) are added automatically, do **not** pass those yourself. If left empty, the runner only has those automatic labels, so any workflow with a custom `runs-on` label will never be matched — the runner will sit online and idle. |
 
 ## Notes
 
-- Registration is persisted in `/data`, so restarts do not re-register and
-  keep working even if the access token expires later.
-- To force a fresh registration (e.g. after renaming), stop the add-on,
+- Registration is persisted in `/data`, so restarts reuse it and keep
+  working even if the access token expires later.
+- Changing `runner_name` or `labels` and restarting the add-on
+  re-registers the runner automatically (via `--replace`, so the old
+  entry is swapped cleanly on GitHub's side). No manual cleanup needed.
+- To force a fresh registration for another reason, stop the add-on,
   remove the runner on GitHub under *Settings → Actions → Runners*, then
   rebuild/reinstall the add-on or clear its data.
 - The runner self-updates automatically when GitHub releases a new version.
