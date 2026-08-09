@@ -1,0 +1,21 @@
+name: T3 Code Runner
+version: "0.1.0"
+slug: t3-code-runner
+description: T3 Code CC executor node — always-on agent harness server for the cc_runner pipeline
+url: https://github.com/fzoll/ha-addons
+arch:
+  - aarch64
+  - amd64
+startup: services
+boot: auto
+init: false
+ports:
+  3773/tcp: 3773
+ports_description:
+  3773/tcp: T3 Code HTTP/WebSocket API — cc_runner and T3 clients connect here
+options:
+  node_id: "ha"
+  anthropic_api_key: ""
+schema:
+  node_id: str
+  anthropic_api_key: password
