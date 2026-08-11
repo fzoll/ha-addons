@@ -8,7 +8,7 @@ standalone, always-on agent harness server on this Home Assistant host, so it ca
 cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
                                               ↑
                                     This add-on: T3 Code server (port 3773)
-                                    Workspace root: /data/SHARED
+                                    Workspace root: /share/t3-code-runner/SHARED
 ```
 
 ## What this add-on does
@@ -19,7 +19,7 @@ cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
 - Starts the built server headless (`t3 serve --port 3773`) with its state directory at `/data/t3`.
 - Installs the Claude Code CLI (`@anthropic-ai/claude-code`) — the provider T3 Code drives for
   `cc_runner` sessions — and points `$HOME` at `/data/home` so its login persists across restarts.
-- Creates `/data/SHARED` as the workspace root. Point `workspaceRoot` at `/data/SHARED/<repo>`
+- Creates `/share/t3-code-runner/SHARED` as the workspace root. Point `workspaceRoot` at `/share/t3-code-runner/SHARED/<repo>`
   when creating T3 projects on this node so clones survive add-on restarts.
 - Rebuilds only when the upstream fork's commit SHA changes (tracked in
   `/data/t3code-src/.built-sha`), since a full monorepo build is expensive.
@@ -46,7 +46,7 @@ cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
 expects each node as a static entry:
 
 ```ts
-{ id: "ha", host: "<this-host-tailscale-or-lan-ip>", port: 3773, tokenPath: "/path/on/cc_runner/host/to/ha.token", workspaceRoot: "/data/SHARED" }
+{ id: "ha", host: "<this-host-tailscale-or-lan-ip>", port: 3773, tokenPath: "/path/on/cc_runner/host/to/ha.token", workspaceRoot: "/share/t3-code-runner/SHARED" }
 ```
 
 There is currently no `cc_runner` API endpoint for a node to register itself dynamically (see
@@ -63,7 +63,7 @@ There is currently no `cc_runner` API endpoint for a node to register itself dyn
    If you missed it or it expired, mint a new one on demand:
    ```bash
    docker exec -it <container> node /data/t3code-src/apps/server/dist/bin.mjs \
-     auth pairing create --base-dir /data/t3 --ttl 60m --label cc-runner
+     auth pairing create --base-dir /share/t3-code-runner/t3 --ttl 60m --label cc-runner
    ```
 
 2. **Exchange the token for an access token**, from wherever `cc_runner` runs:

@@ -7,19 +7,34 @@ ANTHROPIC_API_KEY_OPT=$(jq -r '.anthropic_api_key' "$CONFIG_PATH")
 
 REPO_URL="https://github.com/fzoll/t3code.git"
 BRANCH="fork/cc-runner-support"
+
+# /data is the add-on's private volume: Home Assistant wipes it on uninstall.
+# Everything that must survive a reinstall — T3 state (pairings, projects,
+# threads), cloned workspaces, and provider CLI logins — lives under /share.
+# The build tree stays in /data because it is fully reproducible from git.
+PERSIST_DIR="/share/t3-code-runner"
 SRC_DIR="/data/t3code-src"
-T3_HOME="/data/t3"
-SHARED_DIR="/data/SHARED"
+T3_HOME="$PERSIST_DIR/t3"
+SHARED_DIR="$PERSIST_DIR/SHARED"
+HOME_DIR="$PERSIST_DIR/home"
 BIN_PATH="$SRC_DIR/apps/server/dist/bin.mjs"
 WEB_DIST="$SRC_DIR/apps/web/dist"
 BUILT_SHA_FILE="$SRC_DIR/.built-sha"
 PORT=3773
 
-mkdir -p "$T3_HOME" "$SHARED_DIR" /data/home
+mkdir -p "$T3_HOME" "$SHARED_DIR" "$HOME_DIR"
+
+# Migrate state left behind by add-on versions that stored everything in /data.
+for legacy in t3 SHARED home; do
+  if [ -d "/data/$legacy" ] && [ -z "$(ls -A "$PERSIST_DIR/$legacy" 2>/dev/null)" ]; then
+    echo "Migrating /data/$legacy to $PERSIST_DIR/$legacy..."
+    cp -a "/data/$legacy/." "$PERSIST_DIR/$legacy/"
+  fi
+done
 
 # Claude Code (and any other provider CLI) stores its credentials under $HOME;
-# point HOME at /data so logins survive addon restarts.
-export HOME=/data/home
+# point HOME at the persistent directory so logins survive reinstalls.
+export HOME="$HOME_DIR"
 
 # HA add-ons run as root. Claude Code refuses --dangerously-skip-permissions
 # under root unless it can tell it is already inside a sandbox, and T3 Code

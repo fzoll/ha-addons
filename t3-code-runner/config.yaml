@@ -1,5 +1,5 @@
 name: T3 Code Runner
-version: "0.1.0"
+version: "0.2.0"
 slug: t3-code-runner
 description: T3 Code CC executor node — always-on agent harness server for the cc_runner pipeline
 url: https://github.com/fzoll/ha-addons
@@ -13,6 +13,11 @@ ports:
   3773/tcp: 3773
 ports_description:
   3773/tcp: T3 Code HTTP/WebSocket API — cc_runner and T3 clients connect here
+# /data is the add-on's private volume and is wiped on uninstall. Keep the T3
+# state directory, cloned workspaces, and provider logins under /share so a
+# reinstall does not lose pairings, projects, or repositories.
+map:
+  - share:rw
 options:
   node_id: "ha"
   anthropic_api_key: ""
