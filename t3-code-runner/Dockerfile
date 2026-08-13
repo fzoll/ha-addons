@@ -7,7 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
 
 # Claude Code CLI — the provider T3 Code drives for cc_runner sessions.
-RUN npm install -g @anthropic-ai/claude-code
+#
+# npm 11 blocks package install scripts by default, and recent claude-code
+# releases ship the real CLI as a platform-native optional dependency that a
+# postinstall step unpacks. Without --allow-scripts the install "succeeds" but
+# leaves only a stub that exits with "claude native binary not installed",
+# which surfaces much later as a PlatformError on every session start.
+RUN npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code \
+    && claude --version
 
 # GitHub CLI — T3 Code shells out to `gh` for pull-request lookups and the
 # commit/push/PR flow. Without it every PR status probe fails.
