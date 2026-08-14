@@ -46,6 +46,20 @@ if [ -n "$ANTHROPIC_API_KEY_OPT" ] && [ "$ANTHROPIC_API_KEY_OPT" != "null" ]; th
   export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_OPT"
 fi
 
+# T3 Code drives plain `git` for fetch/push against https remotes and never
+# supplies credentials itself, so an unauthenticated container fails every
+# remote operation with "could not read Username for 'https://github.com'".
+# The other executor nodes solve this with a global gh credential helper, so
+# mirror that here: `gh auth setup-git` is idempotent and only needs the login
+# state, which lives under the persistent $HOME.
+if [ -f "$HOME/.config/gh/hosts.yml" ]; then
+  gh auth setup-git
+  echo "GitHub CLI credential helper configured for $(gh api user --jq .login 2>/dev/null || echo 'unknown user')."
+else
+  echo "WARNING: GitHub CLI is not logged in — git fetch/push against private https remotes will fail."
+  echo "         Run: docker exec -it -e HOME=$HOME_DIR <container> gh auth login"
+fi
+
 if [ ! -d "$SRC_DIR/.git" ]; then
   echo "Cloning t3code ($BRANCH)..."
   git clone --branch "$BRANCH" --depth=1 "$REPO_URL" "$SRC_DIR"

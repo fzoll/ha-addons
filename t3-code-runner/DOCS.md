@@ -16,9 +16,14 @@ cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
 - Clones `fzoll/t3code` (branch `fork/cc-runner-support`) into `/data/t3code-src` and builds the
   `apps/server` package (`t3`) with the Vite+ toolchain. There is no published T3 Code Docker
   image, so it is always built from source.
-- Starts the built server headless (`t3 serve --port 3773`) with its state directory at `/data/t3`.
+- Starts the built server headless (`t3 serve --port 3773`) with its state directory at
+  `/share/t3-code-runner/t3`.
 - Installs the Claude Code CLI (`@anthropic-ai/claude-code`) — the provider T3 Code drives for
-  `cc_runner` sessions — and points `$HOME` at `/data/home` so its login persists across restarts.
+  `cc_runner` sessions — and points `$HOME` at `/share/t3-code-runner/home` so its login survives
+  restarts *and* uninstalls.
+- Installs the GitHub CLI (`gh`) and, when it is logged in, configures it as the global git
+  credential helper on every boot. T3 Code shells out to plain `git` for fetch/push and supplies no
+  credentials of its own, so without this every remote operation on a private https remote fails.
 - Creates `/share/t3-code-runner/SHARED` as the workspace root. Point `workspaceRoot` at `/share/t3-code-runner/SHARED/<repo>`
   when creating T3 projects on this node so clones survive add-on restarts.
 - Rebuilds only when the upstream fork's commit SHA changes (tracked in
@@ -32,6 +37,14 @@ cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
 - Either set `anthropic_api_key` below, or authenticate Claude Code interactively once via
   `docker exec -it <container> claude auth login` (find the container name with `docker ps`; it is
   typically `addon_local_t3-code-runner` for a local add-on repo checkout).
+- A GitHub login for any private repository this node clones or pushes to. Authenticate once:
+
+  ```bash
+  docker exec -it -e HOME=/share/t3-code-runner/home <container> gh auth login
+  ```
+
+  Both logins are stored under `/share`, so they persist across restarts and reinstalls. `run.sh`
+  runs `gh auth setup-git` on every boot and warns in the add-on log when the login is missing.
 
 ## Configuration
 
