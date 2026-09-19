@@ -7,6 +7,11 @@ ANTHROPIC_API_KEY_OPT=$(jq -r '.anthropic_api_key' "$CONFIG_PATH")
 
 REPO_URL="https://github.com/fzoll/t3code.git"
 BRANCH="fork/cc-runner-support"
+REVISION=$(jq -r '.t3_revision // "5efb528d08a8a7cff3cea0e00d004df07909073b"' "$CONFIG_PATH")
+if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Invalid t3_revision: expected a full lowercase Git commit SHA." >&2
+  exit 1
+fi
 
 # /data is the add-on's private volume: Home Assistant wipes it on uninstall.
 # Everything that must survive a reinstall — T3 state (pairings, projects,
@@ -60,14 +65,7 @@ else
   echo "         Run: docker exec -it -e HOME=$HOME_DIR <container> gh auth login"
 fi
 
-if [ ! -d "$SRC_DIR/.git" ]; then
-  echo "Cloning t3code ($BRANCH)..."
-  git clone --branch "$BRANCH" --depth=1 "$REPO_URL" "$SRC_DIR"
-else
-  echo "Updating t3code..."
-  git -C "$SRC_DIR" fetch --depth=1 origin "$BRANCH"
-  git -C "$SRC_DIR" reset --hard "origin/$BRANCH"
-fi
+bash /resolve-revision.sh "$SRC_DIR" "$REPO_URL" "$BRANCH" "$REVISION"
 
 REMOTE_SHA=$(git -C "$SRC_DIR" rev-parse HEAD)
 
