@@ -105,3 +105,17 @@ There is currently no `cc_runner` API endpoint for a node to register itself dyn
   `T3CODE_INTEGRATION_SPEC.md`, but has not been run on real HA/Supervisor hardware in this
   environment (no Docker/Supervisor available here). Expect to iterate on the first real boot,
   particularly build time and disk usage for the full monorepo build.
+
+## Pinned fork revision
+
+`t3_revision` selects a full 40-character commit SHA from
+`fzoll/t3code` branch `fork/cc-runner-support`. Restarting the add-on preserves
+that selection; it does not automatically deploy a moving branch tip. New
+installations default to the release's tested revision.
+
+Before changing the revision, drain pipeline sessions and take a consistent
+backup of T3 state. Change `t3_revision` in add-on configuration, restart, and
+verify `serverVersion` through `/.well-known/t3/environment`. The build source
+lives in `/data/t3code-src`; state, projects, and credentials remain in `/share`.
+An earlier branch commit may be selected for rollback only after confirming
+its database compatibility. Binary rollback does not undo database migrations.

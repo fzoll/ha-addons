@@ -40,6 +40,7 @@ RUN curl -fsSL https://vite.plus | CI=true bash
 ENV PATH="${VP_HOME}/bin:${PATH}"
 
 COPY run.sh /run.sh
+COPY resolve-revision.sh /resolve-revision.sh
 RUN chmod +x /run.sh
 
 CMD ["/run.sh"]
