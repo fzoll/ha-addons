@@ -7,7 +7,7 @@ ANTHROPIC_API_KEY_OPT=$(jq -r '.anthropic_api_key' "$CONFIG_PATH")
 
 REPO_URL="https://github.com/fzoll/t3code.git"
 BRANCH="fork/cc-runner-support"
-REVISION=$(jq -r '.t3_revision // "261ecad8454a757b09e1f31290d64b18a5fadcdb"' "$CONFIG_PATH")
+REVISION=$(jq -r '.t3_revision // "d311e0b698e04a82154c5bbf9bfd1d084fbe45d3"' "$CONFIG_PATH")
 if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Invalid t3_revision: expected a full lowercase Git commit SHA." >&2
   exit 1
