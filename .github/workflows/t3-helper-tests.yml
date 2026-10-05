@@ -1,0 +1,15 @@
+name: T3 add-on tests
+on:
+  push:
+    paths: ["t3-code-runner/**", ".github/workflows/t3-helper-tests.yml"]
+  pull_request:
+    paths: ["t3-code-runner/**", ".github/workflows/t3-helper-tests.yml"]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n t3-code-runner/run.sh t3-code-runner/resolve-revision.sh
+      - run: python3 -m unittest discover -s t3-code-runner/tests -p 'test_*.py' -v

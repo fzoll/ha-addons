@@ -90,4 +90,13 @@ export T3CODE_HOME="$T3_HOME"
 echo "Starting T3 Code server (node_id=$NODE_ID) on port $PORT..."
 echo "First boot prints a 'Token: ...' pairing credential below — see DOCS.md to register this node with cc_runner."
 
-exec node "$BIN_PATH" serve --port "$PORT" --host 0.0.0.0 --base-dir "$T3_HOME"
+# Helper ships in this image, and always uses the exact CLI/base-dir being served.
+# Persistent receiver config/key are provisioned separately; no secret is baked in.
+HELPER_ARGS=()
+if [ "$(jq -r 'if has("credential_publish_enabled") then .credential_publish_enabled else true end' "$CONFIG_PATH")" = "true" ]; then
+  HELPER_ARGS+=(--helper-enabled)
+fi
+exec /usr/bin/python3 /opt/t3-credential-helper/supervise.py \
+  --node-bin "$(command -v node)" --cli "$BIN_PATH" --base-dir "$T3_HOME" \
+  --node-id "$NODE_ID" --port "$PORT" \
+  --state-dir "$PERSIST_DIR/credential-publish" "${HELPER_ARGS[@]}"
