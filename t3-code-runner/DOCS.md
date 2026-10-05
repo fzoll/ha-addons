@@ -171,3 +171,13 @@ The unit/fault suite exercises failed delivery, lost ACK, generation reuse,
 revocation, unsafe configuration, helper failure/timeout, T3 exit propagation,
 and log redaction. A successful suite does not assert that the ARM64 image or
 live HA rollout has been verified.
+
+### Credential helper cadence (0.4.6)
+
+The supervised helper runs at startup and 30 seconds after each completed attempt.
+`T3_CREDENTIAL_INTERVAL_SECONDS` optionally selects an integer from 15 through 300;
+missing or invalid values use 30 so helper configuration cannot prevent T3 startup.
+The existing 90-second helper timeout and single-child supervision remain unchanged.
+No timer or competing helper loop is introduced. Installing this image requires a
+normal supervised add-on restart; source changes do not alter a running 0.4.5 image.
+Cadence is not proof of the complete readiness/recovery SLA.

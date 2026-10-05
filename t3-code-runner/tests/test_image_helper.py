@@ -167,4 +167,17 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(child.returncode, 7)
 
 
+class CadenceTests(unittest.TestCase):
+    def test_default_and_explicit_interval(self):
+        from supervise import configured_interval
+        self.assertEqual(configured_interval({}), 30)
+        self.assertEqual(configured_interval({'T3_CREDENTIAL_INTERVAL_SECONDS': '60'}), 60)
+        self.assertEqual(configured_interval({'T3_CREDENTIAL_INTERVAL_SECONDS': '300'}), 300)
+
+    def test_bad_helper_interval_cannot_prevent_primary_start(self):
+        from supervise import configured_interval
+        for value in ['nan', 'inf', '0', '-1', '301', '1.5', '']:
+            self.assertEqual(configured_interval({'T3_CREDENTIAL_INTERVAL_SECONDS': value}), 30)
+
+
 if __name__ == '__main__': unittest.main()
