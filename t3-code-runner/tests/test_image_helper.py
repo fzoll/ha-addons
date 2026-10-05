@@ -1,3 +1,4 @@
+import ast
 import contextlib
 import io
 import json
@@ -81,6 +82,25 @@ class ConfigurationTests(unittest.TestCase):
             emit('attempt_failed', 'publication_transport_failed')
         self.assertNotIn('SECRET_SENTINEL', capture.getvalue())
         self.assertIn('publication_transport_failed', capture.getvalue())
+
+    def test_actual_guard_codes_survive_wrapper_and_supervisor(self):
+        self.provision()
+        # Keep the whitelist aligned with the vendored guard's bounded literals.
+        tree = ast.parse((HELPERS / 't3_credential_guard.py').read_text())
+        codes = {node.args[0].value for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == 'GuardError' and node.args
+            and isinstance(node.args[0], ast.Constant)}
+        codes.update(('local_loopback_url_required', 'invalid_node_api_base', 'http_401'))
+        for code in sorted(codes):
+            with self.subTest(code=code):
+                def fail(*a, **k): raise p.GuardError(code)
+                result, status = p.run(self.args, fail)
+                self.assertEqual((result['reason'], status), (code, 1))
+                capture = io.StringIO()
+                with contextlib.redirect_stdout(capture):
+                    emit('attempt_failed', result['reason'])
+                self.assertEqual(json.loads(capture.getvalue())['reason'], code)
 
     def test_raw_exceptions_and_results_never_appear(self):
         self.provision()

@@ -11,10 +11,14 @@ from t3_credential_guard import GuardError, publish
 
 SAFE_ERRORS = {
     'environment_mismatch', 'local_pairing_failed', 'publication_transport_failed',
-    'publication_bad_ack', 'publication_ack_mismatch', 'transport_or_response_error',
-    'invalid_session', 'expired_session', 'missing_orchestration_scopes',
+    'publication_bad_ack', 'publication_not_acknowledged', 'publication_target_mismatch',
+    'transport_or_response_error', 'invalid_session', 'expired_session', 'unexpected_scopes',
     'candidate_lifetime_too_short', 'http_401', 'http_403', 'http_404', 'http_503',
-    'already_running', 'unsafe_token_path', 'unsafe_config', 'invalid_config',
+    'publication_in_progress', 'rotation_in_progress', 'unsafe_token_path',
+    'unsafe_config', 'invalid_config', 'invalid_configuration', 'invalid_candidate',
+    'invalid_exchange_response', 'invalid_expiry', 'invalid_publish_target',
+    'invalid_receiver_configuration', 'invalid_transport_configuration',
+    'local_loopback_url_required', 'invalid_node_api_base',
 }
 
 
