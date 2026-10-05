@@ -1,5 +1,5 @@
 name: T3 Code Runner
-version: "0.4.4"
+version: "0.4.5"
 slug: t3-code-runner
 description: T3 Code CC executor node — always-on agent harness server for the cc_runner pipeline
 url: https://github.com/fzoll/ha-addons
@@ -22,7 +22,9 @@ options:
   node_id: "ha"
   t3_revision: "d311e0b698e04a82154c5bbf9bfd1d084fbe45d3"
   anthropic_api_key: ""
+  credential_publish_enabled: true
 schema:
   node_id: str
   t3_revision: "match(^[0-9a-f]{40}$)"
   anthropic_api_key: password
+  credential_publish_enabled: bool

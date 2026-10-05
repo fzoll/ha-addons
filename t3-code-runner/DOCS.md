@@ -119,3 +119,55 @@ verify `serverVersion` through `/.well-known/t3/environment`. The build source
 lives in `/data/t3code-src`; state, projects, and credentials remain in `/share`.
 An earlier branch commit may be selected for rollback only after confirming
 its database compatibility. Binary rollback does not undo database migrations.
+
+## Credential publication helper (0.4.5)
+
+The image supervises T3 and a separate credential publisher. The publisher uses
+exactly the Node binary, compiled CLI and persistent `--base-dir` that start T3.
+It checks every 300 seconds, renews within seven days of expiry, and reconciles
+an already published generation without minting another token. Failed or timed
+out publication never stops T3; each attempt is bounded to 90 seconds. Container
+shutdown first stops the publisher, then allows T3 60 seconds to stop gracefully.
+The supervisor forwards T3's exit status and reaps adopted child processes.
+
+Publication is enabled by default but stays `unconfigured` until provisioned.
+Set `credential_publish_enabled: false` to disable it. No credentials belong in
+the image, repository, add-on options, command arguments, or logs.
+
+Provision these files in `/share/t3-code-runner/credential-publish/` (directory
+0700; files 0600), using a dedicated key for this node:
+
+- `receiver.json`: only `environmentId`, `receiverHost`, `receiverUser`, and
+  integer `receiverPort`. Obtain the environment ID from authenticated T3
+  readiness and verify it against the registered cc_runner HA node.
+- `id_ed25519`: private publication SSH key, not a general administration key.
+- `known_hosts`: independently verified receiver host key; host checking is strict.
+
+The receiver must use the reviewed `t3_credential_guard.py receive` protocol from
+RPI_Hermes PR326. Its forced-command configuration pins this node's actual
+registered token path, environment, and authenticated API base. Append a
+`restrict,command="... receive --config ..."` public-key entry; never replace the
+receiver's general authorized keys. Token payload travels over SSH stdin and
+only a verified receiver ACK advances the local generation. Failed delivery
+retains a private candidate for retry; lost ACKs reuse that same candidate.
+Provider login credentials and existing sessions are not revoked or modified.
+
+### Supervised rollout and rollback
+
+Before upgrading: verify no active HA attempts, record the image and T3 commit,
+and take a protected add-on/persistent-volume backup. This release keeps the T3
+revision pin unchanged. Review and test the image before restarting the add-on.
+Provision receiver restrictions and private volume files before the first
+publication, then confirm `published` followed by `healthy` on reconciliation,
+unchanged generation, and authenticated cc_runner readiness. Helper output alone
+is not acceptance evidence. Keep the old image available for rollback.
+
+If publication fails, disable the option and restart only when idle; the old
+registered credential remains intact. Image rollback preserves the `/share` and
+`/data` volumes. Remove any newly provisioned restricted public key only after
+confirming rollback readiness. Never erase `.t3` data or provider login state.
+
+The unit/fault suite exercises failed delivery, lost ACK, generation reuse,
+revocation, unsafe configuration, helper failure/timeout, T3 exit propagation,
+and log redaction. A successful suite does not assert that the ARM64 image or
+live HA rollout has been verified.

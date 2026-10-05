@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates jq curl python3 make g++ \
+    git ca-certificates jq curl python3 make g++ openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable && corepack prepare pnpm@11.10.0 --activate
@@ -39,6 +39,7 @@ ENV VP_NODE_MANAGER=no
 RUN curl -fsSL https://vite.plus | CI=true bash
 ENV PATH="${VP_HOME}/bin:${PATH}"
 
+COPY credential_helper /opt/t3-credential-helper
 COPY run.sh /run.sh
 COPY resolve-revision.sh /resolve-revision.sh
 RUN chmod +x /run.sh
