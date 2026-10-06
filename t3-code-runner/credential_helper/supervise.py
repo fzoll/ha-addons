@@ -54,7 +54,17 @@ def emit(state, reason=None):
     print(json.dumps(message), flush=True)
 
 
-def supervise(server_command, helper_command=None, interval=300, helper_timeout=90, shutdown_timeout=60):
+def configured_interval(environ=None):
+    """Keep malformed helper configuration from preventing the primary T3 startup."""
+    values = os.environ if environ is None else environ
+    try:
+        value = int(values.get('T3_CREDENTIAL_INTERVAL_SECONDS', '30'))
+    except (ValueError, TypeError):
+        return 30
+    return value if 15 <= value <= 300 else 30
+
+
+def supervise(server_command, helper_command=None, interval=30, helper_timeout=90, shutdown_timeout=60):
     server = subprocess.Popen(server_command, start_new_session=True)
     helper = None; helper_started = 0; next_run = time.monotonic(); stopping = False
     def stop(_signal, _frame):
@@ -127,7 +137,7 @@ def main():
         helper = [sys.executable, os.path.join(os.path.dirname(__file__), 'publish_once.py')]
         for name in ('state_dir', 'node_bin', 'cli', 'base_dir', 'node_id', 'port'):
             helper += ['--'+name.replace('_', '-'), str(getattr(a, name))]
-    return supervise([a.node_bin, a.cli, 'serve', '--port', str(a.port), '--host', '0.0.0.0', '--base-dir', a.base_dir], helper)
+    return supervise([a.node_bin, a.cli, 'serve', '--port', str(a.port), '--host', '0.0.0.0', '--base-dir', a.base_dir], helper, interval=configured_interval())
 
 
 if __name__ == '__main__': sys.exit(main())
