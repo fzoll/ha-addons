@@ -161,6 +161,22 @@ class SupervisorTests(unittest.TestCase):
         self.assertIn('attempt_timed_out', out)
         self.assertTrue(marker.exists())
 
+    def test_periodic_helpers_never_overlap(self):
+        attempts = self.root / 'attempts'
+        lock = self.root / 'lock'
+        overlap = self.root / 'overlap'
+        helper = (f'import fcntl,pathlib,time; f=open({str(lock)!r}, "w"); '
+            '\ntry: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)'
+            f'\nexcept BlockingIOError: pathlib.Path({str(overlap)!r}).touch()'
+            f'\npathlib.Path({str(attempts)!r}).open("a").write("x")'
+            '\ntime.sleep(.2); print(\'{"state":"healthy"}\')')
+        child, _ = self.launch(helper)
+        self.wait_for(lambda: attempts.exists() and len(attempts.read_text()) >= 2)
+        child.terminate()
+        child.communicate(timeout=4)
+        self.assertFalse(overlap.exists())
+        self.assertEqual(child.returncode, 0)
+
     def test_primary_failure_propagates(self):
         child, _ = self.launch('import time; time.sleep(30)', 'import time,sys; time.sleep(.2); sys.exit(7)')
         out, err = child.communicate(timeout=4)
