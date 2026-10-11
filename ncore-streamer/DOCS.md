@@ -53,6 +53,8 @@ A GitHub Actions workflow (`ncore-streamer-bump.yml`) checks `fzoll/ncore-stream
 hour. When it moved, it opens a PR that updates `ncore-streamer/REVISION` and bumps the add-on
 patch version. Merge the PR, then press **Update** on the add-on in Home Assistant. The workflow
 needs the repository secret `NCORE_STREAMER_DEPLOY_KEY` (a read-only deploy key of
-`fzoll/ncore-streamer`, set by the operator).
+`fzoll/ncore-streamer`, set by the operator) and the repository setting *Settings → Actions →
+General → Workflow permissions → Allow GitHub Actions to create and approve pull requests*;
+without it `gh pr create` with the default token fails.
 
 The `REVISION` must be an ancestor of `master`; otherwise the add-on refuses to start.

@@ -17,7 +17,9 @@ Az `ncore-streamer/` add-on a privát `fzoll/ncore-streamer` repó egy pinelt co
 (`ncore-streamer/REVISION`) klónozza futásidőben. A pin-bump PR-eket (`bot/ncore-streamer-<sha7>`,
 `fix(ncore-streamer): pin <sha7> (<verzió>)`) a `.github/workflows/ncore-streamer-bump.yml`
 workflow nyitja óránként — kézzel ne bumpold a `REVISION`-t, és ne tedd option-be (a HA a
-telepített add-on optionjeit megtartja). A PR-t csak merge-elni kell, utána HA Update.
+telepített add-on optionjeit megtartja). A workflowhoz kell a `NCORE_STREAMER_DEPLOY_KEY` secret és
+a repó *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*
+beállítás (különben a `gh pr create` hibázik). A PR-t csak merge-elni kell, utána HA Update.
 
 ## Review checklist
 
