@@ -19,7 +19,8 @@ Az `ncore-streamer/` add-on a privát `fzoll/ncore-streamer` repó egy pinelt co
 workflow nyitja óránként — kézzel ne bumpold a `REVISION`-t, és ne tedd option-be (a HA a
 telepített add-on optionjeit megtartja). A workflowhoz kell a `NCORE_STREAMER_DEPLOY_KEY` secret és
 a repó *Settings → Actions → General → Allow GitHub Actions to create and approve pull requests*
-beállítás (különben a `gh pr create` hibázik). A PR-t csak merge-elni kell, utána HA Update.
+beállítás (különben a `gh pr create` hibázik). A workflow a PR-t maga merge-öli (`gh pr merge --squash --delete-branch`), kézi lépés nincs
+(legfeljebb a HA Update, ha az add-onon nincs auto-update).
 
 ## Review checklist
 

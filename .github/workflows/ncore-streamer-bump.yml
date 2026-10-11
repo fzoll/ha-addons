@@ -37,7 +37,7 @@ jobs:
             exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-      - name: Open pin-bump PR
+      - name: Open and merge pin-bump PR
         env:
           NEW_SHA: ${{ steps.head.outputs.sha }}
         run: |
@@ -52,42 +52,47 @@ jobs:
 
           # Only an open PR for this SHA counts as handled; a branch left behind by a
           # failed PR creation is simply rebuilt and force-pushed below.
-          open_prs=$(gh pr list --head "$branch" --state open --json number --jq length)
-          if [ "$open_prs" != "0" ]; then
-            echo "An open PR for $branch already exists; not opening another."
-            exit 0
+          pr_url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')
+          if [ -n "$pr_url" ]; then
+            echo "An open PR for $branch already exists ($pr_url); merging it."
+          else
+            old_version=$(sed -nE 's/^version: "?([0-9]+\.[0-9]+\.[0-9]+)"?$/\1/p' ncore-streamer/config.yaml)
+            if [ -z "$old_version" ]; then
+              echo "::error::Cannot parse version from ncore-streamer/config.yaml."
+              exit 1
+            fi
+            IFS=. read -r major minor patch <<< "$old_version"
+            new_version="$major.$minor.$((patch + 1))"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$branch"
+            printf '%s\n' "$NEW_SHA" > ncore-streamer/REVISION
+            sed -i -E "s/^version: .*/version: \"$new_version\"/" ncore-streamer/config.yaml
+            git add ncore-streamer/REVISION ncore-streamer/config.yaml
+            title="fix(ncore-streamer): pin $short ($new_version)"
+            git commit -m "$title"
+            git push --force origin "$branch"
+
+            body="Automatic pin bump: \`fzoll/ncore-streamer\` master is now \`$NEW_SHA\`."
+            body+=$'\n\n'"Automatically merged by the pin-bump workflow; Home Assistant offers the update (or installs it with auto-update on)."
+            if ! pr_url=$(gh pr create --head "$branch" --title "$title" --body "$body"); then
+              echo "::error::PR creation failed. Enable Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests' (or use a PAT/App token)."
+              exit 1
+            fi
+            echo "Opened $pr_url"
           fi
 
-          old_version=$(sed -nE 's/^version: "?([0-9]+\.[0-9]+\.[0-9]+)"?$/\1/p' ncore-streamer/config.yaml)
-          if [ -z "$old_version" ]; then
-            echo "::error::Cannot parse version from ncore-streamer/config.yaml."
-            exit 1
-          fi
-          IFS=. read -r major minor patch <<< "$old_version"
-          new_version="$major.$minor.$((patch + 1))"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          printf '%s\n' "$NEW_SHA" > ncore-streamer/REVISION
-          sed -i -E "s/^version: .*/version: \"$new_version\"/" ncore-streamer/config.yaml
-          git add ncore-streamer/REVISION ncore-streamer/config.yaml
-          title="fix(ncore-streamer): pin $short ($new_version)"
-          git commit -m "$title"
-          git push --force origin "$branch"
-
-          body="Automatic pin bump: \`fzoll/ncore-streamer\` master is now \`$NEW_SHA\`."
-          body+=$'\n\n'"Merging bumps the add-on to $new_version; update it in Home Assistant afterwards."
-          if ! pr_url=$(gh pr create --head "$branch" --title "$title" --body "$body"); then
-            echo "::error::PR creation failed. Enable Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests' (or use a PAT/App token)."
-            exit 1
-          fi
-          echo "Opened $pr_url"
-
-          # Older bump PRs are superseded by the newest pin.
+          # Older bump PRs are superseded by the newest pin; close them before merging.
           gh pr list --state open --json number,headRefName \
             --jq '.[] | select(.headRefName | startswith("bot/ncore-streamer-")) | select(.headRefName != "'"$branch"'") | .number' |
             while read -r number; do
               gh pr close "$number" --delete-branch \
                 --comment "Superseded by the pin bump to $short."
             done
+
+          if ! gh pr merge "$pr_url" --squash --delete-branch; then
+            echo "::error::Merging $pr_url failed."
+            exit 1
+          fi
+          echo "Merged $pr_url"
