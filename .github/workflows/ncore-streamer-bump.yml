@@ -1,0 +1,93 @@
+name: nCore Streamer pin bump
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: ncore-streamer-bump
+  cancel-in-progress: false
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NCORE_STREAMER_DEPLOY_KEY: ${{ secrets.NCORE_STREAMER_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find latest ncore-streamer master
+        id: head
+        run: |
+          set -euo pipefail
+          if [ -z "$NCORE_STREAMER_DEPLOY_KEY" ]; then
+            echo "::error::Secret NCORE_STREAMER_DEPLOY_KEY is not set (read-only deploy key of fzoll/ncore-streamer)."
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ssh"
+          # printf, not echo; the key is never printed.
+          printf '%s\n' "$NCORE_STREAMER_DEPLOY_KEY" > "$RUNNER_TEMP/ssh/key"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/ssh/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/ssh/known_hosts -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+          sha=$(git ls-remote git@github.com:fzoll/ncore-streamer.git refs/heads/master | cut -f1)
+          rm -rf "$RUNNER_TEMP/ssh"
+          if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve fzoll/ncore-streamer master."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Open pin-bump PR
+        env:
+          NEW_SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          set -euo pipefail
+          current=$(tr -d '[:space:]' < ncore-streamer/REVISION)
+          if [ "$current" = "$NEW_SHA" ]; then
+            echo "Pin already at $NEW_SHA."
+            exit 0
+          fi
+          short=${NEW_SHA:0:7}
+          branch="bot/ncore-streamer-$short"
+
+          # Only an open PR for this SHA counts as handled; a branch left behind by a
+          # failed PR creation is simply rebuilt and force-pushed below.
+          open_prs=$(gh pr list --head "$branch" --state open --json number --jq length)
+          if [ "$open_prs" != "0" ]; then
+            echo "An open PR for $branch already exists; not opening another."
+            exit 0
+          fi
+
+          old_version=$(sed -nE 's/^version: "?([0-9]+\.[0-9]+\.[0-9]+)"?$/\1/p' ncore-streamer/config.yaml)
+          if [ -z "$old_version" ]; then
+            echo "::error::Cannot parse version from ncore-streamer/config.yaml."
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$old_version"
+          new_version="$major.$minor.$((patch + 1))"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          printf '%s\n' "$NEW_SHA" > ncore-streamer/REVISION
+          sed -i -E "s/^version: .*/version: \"$new_version\"/" ncore-streamer/config.yaml
+          git add ncore-streamer/REVISION ncore-streamer/config.yaml
+          title="fix(ncore-streamer): pin $short ($new_version)"
+          git commit -m "$title"
+          git push --force origin "$branch"
+
+          body="Automatic pin bump: \`fzoll/ncore-streamer\` master is now \`$NEW_SHA\`."
+          body+=$'\n\n'"Merging bumps the add-on to $new_version; update it in Home Assistant afterwards."
+          if ! pr_url=$(gh pr create --head "$branch" --title "$title" --body "$body"); then
+            echo "::error::PR creation failed. Enable Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests' (or use a PAT/App token)."
+            exit 1
+          fi
+          echo "Opened $pr_url"
+
+          # Older bump PRs are superseded by the newest pin.
+          gh pr list --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("bot/ncore-streamer-")) | select(.headRefName != "'"$branch"'") | .number' |
+            while read -r number; do
+              gh pr close "$number" --delete-branch \
+                --comment "Superseded by the pin bump to $short."
+            done

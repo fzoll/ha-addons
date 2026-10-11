@@ -1,0 +1,44 @@
+name: nCore Streamer add-on checks
+on:
+  push:
+    paths: ["ncore-streamer/**", ".github/workflows/ncore-streamer-*.yml"]
+  pull_request:
+    paths: ["ncore-streamer/**", ".github/workflows/ncore-streamer-*.yml"]
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax and shellcheck
+        run: |
+          bash -n ncore-streamer/run.sh
+          shellcheck ncore-streamer/run.sh
+      - name: Add-on config and pin sanity
+        run: |
+          python3 -m pip install --quiet pyyaml
+          python3 - <<'PY'
+          import re
+          import yaml
+
+          cfg = yaml.safe_load(open("ncore-streamer/config.yaml"))
+          assert cfg["slug"] == "ncore-streamer", cfg["slug"]
+          assert re.fullmatch(r"\d+\.\d+\.\d+", cfg["version"]), cfg["version"]
+          assert set(cfg["options"]) == set(cfg["schema"]), "options/schema mismatch"
+          assert not any("revision" in k for k in cfg["options"]), "pin must not be an option"
+          assert re.fullmatch(r"[0-9a-f]{40}\n", open("ncore-streamer/REVISION").read()), "bad REVISION"
+          wf = yaml.safe_load(open(".github/workflows/ncore-streamer-bump.yml"))
+          assert wf["jobs"]["bump"]["steps"], "bump workflow has no steps"
+          PY
+      - name: Bump workflow scripts pass shellcheck
+        run: |
+          python3 - <<'PY'
+          import yaml
+
+          wf = yaml.safe_load(open(".github/workflows/ncore-streamer-bump.yml"))
+          for i, step in enumerate(wf["jobs"]["bump"]["steps"]):
+              if "run" in step:
+                  open(f"/tmp/bump-step{i}.sh", "w").write("#!/usr/bin/env bash\n" + step["run"])
+          PY
+          shellcheck /tmp/bump-step*.sh

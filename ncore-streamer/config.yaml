@@ -1,0 +1,48 @@
+name: nCore Streamer
+version: "3.0.0"
+slug: ncore-streamer
+description: Sync nCore torrent catalog with Jellyfin — browse and stream movies via DLNA
+url: https://github.com/fzoll/ha-addons
+arch:
+  - aarch64
+  - amd64
+init: false
+ingress: true
+ingress_port: 9876
+panel_icon: "mdi:filmstrip"
+panel_title: "nCore Streamer"
+ports:
+  9876/tcp: 9876
+ports_description:
+  9876/tcp: "nCore Streamer API"
+# The pinned app commit lives in the REVISION file next to this config (not an
+# option: HA keeps the options of an installed add-on, so a new default would
+# never take effect). The /data volume is wiped on uninstall, so the database
+# and media live under /share.
+map:
+  - share:rw
+host_network: true
+options:
+  ncore_username: ""
+  ncore_password: ""
+  jellyfin_url: "http://127.0.0.1:8096"
+  jellyfin_api_key: ""
+  transmission_url: "http://127.0.0.1:9091"
+  tmdb_api_key: ""
+  sync_interval_hours: 4
+  pages_per_category: 5
+  min_seeders: 5
+  cleanup_max_age_days: 3
+  cleanup_schedule: "04:00"
+schema:
+  ncore_username: str
+  ncore_password: password
+  jellyfin_url: str
+  jellyfin_api_key: str
+  transmission_url: str
+  tmdb_api_key: str
+  sync_interval_hours: int
+  pages_per_category: int
+  min_seeders: int
+  cleanup_max_age_days: int
+  cleanup_schedule: str
