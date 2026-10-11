@@ -51,7 +51,8 @@ so a new default would never apply. The pin is the `REVISION` file shipped with 
 
 A GitHub Actions workflow (`ncore-streamer-bump.yml`) checks `fzoll/ncore-streamer` `master` every
 hour. When it moved, it opens a PR that updates `ncore-streamer/REVISION` and bumps the add-on
-patch version. Merge the PR, then press **Update** on the add-on in Home Assistant. The workflow
+patch version, and merges it right away (the PR is the audit trail). There is no manual step; Home
+Assistant then offers the update — press **Update** on the add-on unless auto-update is on. The workflow
 needs the repository secret `NCORE_STREAMER_DEPLOY_KEY` (a read-only deploy key of
 `fzoll/ncore-streamer`, set by the operator) and the repository setting *Settings → Actions →
 General → Workflow permissions → Allow GitHub Actions to create and approve pull requests*;

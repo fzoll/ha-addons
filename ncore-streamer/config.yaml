@@ -1,5 +1,5 @@
 name: nCore Streamer
-version: "3.0.0"
+version: "3.0.1"
 slug: ncore-streamer
 description: Sync nCore torrent catalog with Jellyfin — browse and stream movies via DLNA
 url: https://github.com/fzoll/ha-addons
