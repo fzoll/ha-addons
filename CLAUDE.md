@@ -1,15 +1,23 @@
 # ha-addons — Claude Code szabályok
 
-Home Assistant addon store repo (cc-runner, github-runner). A HA Supervisor
+Home Assistant addon store repo (cc-runner, github-runner, t3-code-runner, ncore-streamer). A HA Supervisor
 auto-update figyeli — **egy addon frissítése CSAK akkor jut el a HA gépre, ha a
 verziója nő.**
 
 ## KÖTELEZŐ: verzió-bump minden addon-változásnál
 
-Ha egy addon könyvtárában (cc-runner/, github-runner/) BÁRMI változik, a PR-ben
+Ha egy addon könyvtárában (cc-runner/, github-runner/, t3-code-runner/, ncore-streamer/) BÁRMI változik, a PR-ben
 KÖTELEZŐ az adott addon `config.yaml` `version` mezőjét bumpolni (patch szint elég,
 pl. 0.1.2 → 0.1.3), és a commit üzenet címében jelezni: `fix(cc-runner): ... (0.1.3)`.
 Verzió-bump nélkül a Supervisor SOSEM telepíti a változást — a fix halott betű marad.
+
+## ncore-streamer: automatikus pin-bump
+
+Az `ncore-streamer/` add-on a privát `fzoll/ncore-streamer` repó egy pinelt commitját
+(`ncore-streamer/REVISION`) klónozza futásidőben. A pin-bump PR-eket (`bot/ncore-streamer-<sha7>`,
+`fix(ncore-streamer): pin <sha7> (<verzió>)`) a `.github/workflows/ncore-streamer-bump.yml`
+workflow nyitja óránként — kézzel ne bumpold a `REVISION`-t, és ne tedd option-be (a HA a
+telepített add-on optionjeit megtartja). A PR-t csak merge-elni kell, utána HA Update.
 
 ## Review checklist
 
