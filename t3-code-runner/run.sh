@@ -77,7 +77,10 @@ if [ ! -f "$BIN_PATH" ] || [ ! -d "$WEB_DIST" ] ||
   [ "$(cat "$BUILT_SHA_FILE" 2>/dev/null)" != "$REMOTE_SHA" ]; then
   echo "Building T3 Code server + web client for $REMOTE_SHA (first build can take a long time)..."
   cd "$SRC_DIR"
-  vp i
+  # The add-on has no TTY. When an upgrade changes the install layout, pnpm
+  # wants to purge node_modules and aborts with
+  # ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY unless it runs in CI mode.
+  CI=true vp i
   vp run --filter t3 build:bundle
   vp run --filter @t3tools/web build
   echo "$REMOTE_SHA" > "$BUILT_SHA_FILE"
