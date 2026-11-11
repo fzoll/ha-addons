@@ -1,183 +1,95 @@
 # T3 Code Runner
 
-Runs [T3 Code](https://github.com/fzoll/t3code) (fork `fzoll/t3code@fork/cc-runner-support`) as a
-standalone, always-on agent harness server on this Home Assistant host, so it can act as a third
-`cc_runner` executor node alongside the RPi (systemd) and Mac (Desktop app) nodes.
+Runs the official, unmodified [T3 Code](https://github.com/pingdotgg/t3code) server on this Home
+Assistant host, so the machine can work as an always-on T3 Code environment next to your other
+machines.
 
-```
-cc_runner (RPi) dispatch → T3 nodes: rpi / mac / ha-addon
-                                              ↑
-                                    This add-on: T3 Code server (port 3773)
-                                    Workspace root: /share/t3-code-runner/SHARED
-```
+Up to add-on version 0.4.x this add-on built a fork of T3 Code from source. Since 0.5.0 it installs
+a pinned official release instead.
 
 ## What this add-on does
 
-- Clones `fzoll/t3code` (branch `fork/cc-runner-support`) into `/data/t3code-src` and builds the
-  `apps/server` package (`t3`) with the Vite+ toolchain. There is no published T3 Code Docker
-  image, so it is always built from source.
-- Starts the built server headless (`t3 serve --port 3773`) with its state directory at
-  `/share/t3-code-runner/t3`.
-- Installs the Claude Code CLI (`@anthropic-ai/claude-code`) — the provider T3 Code drives for
-  `cc_runner` sessions — and points `$HOME` at `/share/t3-code-runner/home` so its login survives
-  restarts *and* uninstalls.
+- Installs a pinned official T3 Code release (see `T3_VERSION` in the `Dockerfile`) from the
+  project's GitHub releases, verified against the release checksum. Nothing is built from source.
+- Starts the server with `t3 serve --host 0.0.0.0 --port 3773`, with its data directory at
+  `/share/t3-code-runner/t3-home`.
+- Links the environment to T3 Connect on first start (optional, see below).
+- Installs the Claude Code CLI (`@anthropic-ai/claude-code`) and points `$HOME` at
+  `/share/t3-code-runner/home`, so provider logins survive restarts and uninstalls.
 - Installs the GitHub CLI (`gh`) and, when it is logged in, configures it as the global git
-  credential helper on every boot. T3 Code shells out to plain `git` for fetch/push and supplies no
-  credentials of its own, so without this every remote operation on a private https remote fails.
-- Creates `/share/t3-code-runner/SHARED` as the workspace root. Point `workspaceRoot` at `/share/t3-code-runner/SHARED/<repo>`
-  when creating T3 projects on this node so clones survive add-on restarts.
-- Rebuilds only when the upstream fork's commit SHA changes (tracked in
-  `/data/t3code-src/.built-sha`), since a full monorepo build is expensive.
-
-## Requirements
-
-- HA OS or Supervisor host with enough disk/RAM for a full Node.js monorepo build (the fork pulls
-  in the web client packages that `apps/server` serves as static assets). The issue that requested
-  this add-on assumes a 16GB RPi, where resources are not expected to be a constraint.
-- Either set `anthropic_api_key` below, or authenticate Claude Code interactively once via
-  `docker exec -it <container> claude auth login` (find the container name with `docker ps`; it is
-  typically `addon_local_t3-code-runner` for a local add-on repo checkout).
-- A GitHub login for any private repository this node clones or pushes to. Authenticate once:
-
-  ```bash
-  docker exec -it -e HOME=/share/t3-code-runner/home <container> gh auth login
-  ```
-
-  Both logins are stored under `/share`, so they persist across restarts and reinstalls. `run.sh`
-  runs `gh auth setup-git` on every boot and warns in the add-on log when the login is missing.
+  credential helper on every boot. T3 Code uses plain `git` for fetch and push and supplies no
+  credentials of its own.
+- Installs `cloudflared` in the version this T3 release expects. T3 Connect needs it, and T3 Code
+  can only download it through an interactive prompt that an add-on cannot answer.
+- Uses `/share/t3-code-runner/SHARED` as the working directory. Clone repositories there so they
+  survive add-on restarts and reinstalls.
 
 ## Configuration
 
-| Option              | Description                                                                 |
-|----------------------|-----------------------------------------------------------------------------|
-| `node_id`            | Label this node registers under / pairs as (defaults to `ha`)               |
-| `anthropic_api_key`  | Optional. If set, exported as `ANTHROPIC_API_KEY` so Claude Code works headlessly without an interactive `claude auth login`. |
+| Option              | Description |
+|---------------------|-------------|
+| `t3_connect`        | Default `true`. Link this environment to your T3 Connect account on start. Set to `false` to reach the server only over the local network or Tailscale. |
+| `anthropic_api_key` | Optional. If set, exported as `ANTHROPIC_API_KEY` so Claude Code works without an interactive `claude auth login`. |
 
-## Registering with cc_runner
+## First start
 
-`cc_runner`'s `T3Client` (see `apps/server/src/services/t3-client.ts` in the `cc_runner` repo)
-expects each node as a static entry:
+### T3 Connect
 
-```ts
-{ id: "ha", host: "<this-host-tailscale-or-lan-ip>", port: 3773, tokenPath: "/path/on/cc_runner/host/to/ha.token", workspaceRoot: "/share/t3-code-runner/SHARED" }
+With `t3_connect` on and the environment not linked yet, the add-on log shows a sign-in address and
+a short code:
+
+```
+Sign in to T3 Connect. Open on any device:
+  https://accounts.t3.codes/device?user_code=...
+Code: XXXX-XXXX
+Waiting for approval. Expires in 10 min.
 ```
 
-There is currently no `cc_runner` API endpoint for a node to register itself dynamically (see
-"What's left" below), so pairing is a one-time manual step, same as the RPi/Mac nodes:
+Open the address on any device and approve it with your T3 Connect account. The server starts as
+soon as you approve. If nobody approves within 10 minutes the server starts without T3 Connect;
+restart the add-on to get a new code.
 
-1. **Start the add-on** and open its **Log** tab. On first boot (before any auth exists) it prints
-   a pairing credential:
-   ```
-   T3 Code server is ready.
-   Connection string: http://<ip>:3773
-   Token: <PAIRING_TOKEN>
-   Pairing URL: http://<ip>:3773/pair#token=<PAIRING_TOKEN>
-   ```
-   If you missed it or it expired, mint a new one on demand:
-   ```bash
-   docker exec -it <container> node /data/t3code-src/apps/server/dist/bin.mjs \
-     auth pairing create --base-dir /share/t3-code-runner/t3 --ttl 60m --label cc-runner
-   ```
+The link is stored in `/share/t3-code-runner/t3-home` and is reused on every later start. Do not
+delete that directory: a new one counts as a new machine on your T3 Connect account, and the old
+one keeps occupying a slot until you deregister it on the account's T3 Connect page.
 
-2. **Exchange the token for an access token**, from wherever `cc_runner` runs:
-   ```bash
-   curl -sf -X POST "http://<ip>:3773/api/auth/bootstrap" \
-     -H "Content-Type: application/json" \
-     -d '{"credential":"<PAIRING_TOKEN>","clientLabel":"cc-runner","clientDeviceType":"server"}' \
-     | jq -r '.accessToken' > /path/on/cc_runner/host/to/ha.token
-   ```
+### Provider and GitHub logins
 
-3. **Add the node** to `cc_runner`'s `T3_NODES` config using the block above (`tokenPath` pointing
-   at the file just written), and restart `cc_runner`.
+Find the container name with `docker ps` (typically `addon_local_t3-code-runner` or
+`addon_<repo-hash>_t3-code-runner`), then:
 
-4. **Verify**: `cc_runner` polls `GET http://<ip>:3773/.well-known/t3/environment` for health; it
-   should report this node's `environmentId`, `label`, and free memory within a minute.
+```bash
+docker exec -it -e HOME=/share/t3-code-runner/home <container> claude auth login
+docker exec -it -e HOME=/share/t3-code-runner/home <container> gh auth login
+```
 
-## What's left (not implemented here)
+Both logins are stored under `/share`, so they persist across restarts and reinstalls. `run.sh`
+warns in the add-on log when the GitHub login is missing.
 
-- **Dynamic node registration** (issue's preferred option): needs a new `cc_runner` API endpoint
-  this add-on could call at startup. That endpoint doesn't exist upstream yet — out of scope for a
-  Home Assistant add-on PR; tracked as a follow-up against `cc_runner`.
-- **Phase 3 HA-specific features** (HA config validation tasks, automation testing, addon-build CI
-  runner) — none of that exists yet; this add-on only stands up the generic T3 Code node.
-- **End-to-end verification**: the build and pairing flow above is derived directly from the
-  `t3code` fork's source (CLI flags, startup pairing output) and from `cc_runner`'s
-  `T3CODE_INTEGRATION_SPEC.md`, but has not been run on real HA/Supervisor hardware in this
-  environment (no Docker/Supervisor available here). Expect to iterate on the first real boot,
-  particularly build time and disk usage for the full monorepo build.
+## Upgrading T3 Code
 
-## Pinned fork revision
+All machines that work together must run the same T3 Code version. To move this add-on to a new
+release, change these in one pull request:
 
-`t3_revision` selects a full 40-character commit SHA from
-`fzoll/t3code` branch `fork/cc-runner-support`. Restarting the add-on preserves
-that selection; it does not automatically deploy a moving branch tip. New
-installations default to the release's tested revision.
+1. `T3_VERSION` and both `T3_SHA256_*` values in the `Dockerfile` (from the release's `SHA256SUMS`).
+2. `CLOUDFLARED_VERSION` and its checksums, if the new T3 release expects another version
+   (`t3 connect status --json` reports it as `relayClient.version`).
+3. `version` in `config.yaml` — Home Assistant only installs a change when the version grows.
 
-Before changing the revision, drain pipeline sessions and take a consistent
-backup of T3 state. Change `t3_revision` in add-on configuration, restart, and
-verify `serverVersion` through `/.well-known/t3/environment`. The build source
-lives in `/data/t3code-src`; state, projects, and credentials remain in `/share`.
-An earlier branch commit may be selected for rollback only after confirming
-its database compatibility. Binary rollback does not undo database migrations.
+## State from add-on versions before 0.5.0
 
-## Credential publication helper (0.4.5)
+The fork's data directory, `/share/t3-code-runner/t3`, is not used any more and is not deleted.
+The official release cannot open it. Remove it by hand once you no longer need the old thread
+history. The same goes for `/share/t3-code-runner/credential-publish` and the
+`activation-*` files, which belonged to the retired cc_runner integration.
 
-The image supervises T3 and a separate credential publisher. The publisher uses
-exactly the Node binary, compiled CLI and persistent `--base-dir` that start T3.
-It checks every 300 seconds, renews within seven days of expiry, and reconciles
-an already published generation without minting another token. Failed or timed
-out publication never stops T3; each attempt is bounded to 90 seconds. Container
-shutdown first stops the publisher, then allows T3 60 seconds to stop gracefully.
-The supervisor forwards T3's exit status and reaps adopted child processes.
+Options from older versions (`node_id`, `t3_revision`, `credential_publish_enabled`) are no longer
+read.
 
-Publication is enabled by default but stays `unconfigured` until provisioned.
-Set `credential_publish_enabled: false` to disable it. No credentials belong in
-the image, repository, add-on options, command arguments, or logs.
+## Notes
 
-Provision these files in `/share/t3-code-runner/credential-publish/` (directory
-0700; files 0600), using a dedicated key for this node:
-
-- `receiver.json`: only `environmentId`, `receiverHost`, `receiverUser`, and
-  integer `receiverPort`. Obtain the environment ID from authenticated T3
-  readiness and verify it against the registered cc_runner HA node.
-- `id_ed25519`: private publication SSH key, not a general administration key.
-- `known_hosts`: independently verified receiver host key; host checking is strict.
-
-The receiver must use the reviewed `t3_credential_guard.py receive` protocol from
-RPI_Hermes PR326. Its forced-command configuration pins this node's actual
-registered token path, environment, and authenticated API base. Append a
-`restrict,command="... receive --config ..."` public-key entry; never replace the
-receiver's general authorized keys. Token payload travels over SSH stdin and
-only a verified receiver ACK advances the local generation. Failed delivery
-retains a private candidate for retry; lost ACKs reuse that same candidate.
-Provider login credentials and existing sessions are not revoked or modified.
-
-### Supervised rollout and rollback
-
-Before upgrading: verify no active HA attempts, record the image and T3 commit,
-and take a protected add-on/persistent-volume backup. This release keeps the T3
-revision pin unchanged. Review and test the image before restarting the add-on.
-Provision receiver restrictions and private volume files before the first
-publication, then confirm `published` followed by `healthy` on reconciliation,
-unchanged generation, and authenticated cc_runner readiness. Helper output alone
-is not acceptance evidence. Keep the old image available for rollback.
-
-If publication fails, disable the option and restart only when idle; the old
-registered credential remains intact. Image rollback preserves the `/share` and
-`/data` volumes. Remove any newly provisioned restricted public key only after
-confirming rollback readiness. Never erase `.t3` data or provider login state.
-
-The unit/fault suite exercises failed delivery, lost ACK, generation reuse,
-revocation, unsafe configuration, helper failure/timeout, T3 exit propagation,
-and log redaction. A successful suite does not assert that the ARM64 image or
-live HA rollout has been verified.
-
-### Credential helper cadence (0.4.6)
-
-The supervised helper runs at startup and 30 seconds after each completed attempt.
-`T3_CREDENTIAL_INTERVAL_SECONDS` optionally selects an integer from 15 through 300;
-missing or invalid values use 30 so helper configuration cannot prevent T3 startup.
-The existing 90-second helper timeout and single-child supervision remain unchanged.
-No timer or competing helper loop is introduced. Installing this image requires a
-normal supervised add-on restart; source changes do not alter a running 0.4.5 image.
-Cadence is not proof of the complete readiness/recovery SLA.
+- Home Assistant add-ons run as root. The add-on sets `IS_SANDBOX=1` so Claude Code accepts
+  full-access sessions, and `T3CODE_SERVER_BROWSER_SANDBOX=0` because T3's built-in browser cannot
+  start its own sandbox as root. The add-on container is the isolation boundary.
+- Port 3773 is published on the host. T3 Code still requires pairing or a T3 Connect sign-in before
+  it accepts a client.

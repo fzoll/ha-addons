@@ -2,61 +2,46 @@
 set -e
 
 CONFIG_PATH="/data/options.json"
-NODE_ID=$(jq -r '.node_id' "$CONFIG_PATH")
-ANTHROPIC_API_KEY_OPT=$(jq -r '.anthropic_api_key' "$CONFIG_PATH")
-
-REPO_URL="https://github.com/fzoll/t3code.git"
-BRANCH="fork/cc-runner-support"
-REVISION=$(jq -r '.t3_revision // "d311e0b698e04a82154c5bbf9bfd1d084fbe45d3"' "$CONFIG_PATH")
-if [[ ! "$REVISION" =~ ^[0-9a-f]{40}$ ]]; then
-  echo "Invalid t3_revision: expected a full lowercase Git commit SHA." >&2
-  exit 1
-fi
+T3_CONNECT=$(jq -r 'if has("t3_connect") then .t3_connect else true end' "$CONFIG_PATH")
+ANTHROPIC_API_KEY_OPT=$(jq -r '.anthropic_api_key // ""' "$CONFIG_PATH")
 
 # /data is the add-on's private volume: Home Assistant wipes it on uninstall.
-# Everything that must survive a reinstall — T3 state (pairings, projects,
-# threads), cloned workspaces, and provider CLI logins — lives under /share.
-# The build tree stays in /data because it is fully reproducible from git.
+# Everything that must survive a reinstall — T3 state (environment identity,
+# T3 Connect link, projects, threads), cloned repositories, and provider CLI
+# logins — lives under /share.
 PERSIST_DIR="/share/t3-code-runner"
-SRC_DIR="/data/t3code-src"
-T3_HOME="$PERSIST_DIR/t3"
+# Add-on versions before 0.5.0 ran a fork of T3 Code and kept its state in
+# $PERSIST_DIR/t3. The official release cannot open that database (its
+# migration history differs), so the official server gets its own directory
+# and the old one is left untouched for manual cleanup.
+T3_HOME="$PERSIST_DIR/t3-home"
 SHARED_DIR="$PERSIST_DIR/SHARED"
 HOME_DIR="$PERSIST_DIR/home"
-BIN_PATH="$SRC_DIR/apps/server/dist/bin.mjs"
-WEB_DIST="$SRC_DIR/apps/web/dist"
-BUILT_SHA_FILE="$SRC_DIR/.built-sha"
 PORT=3773
 
 mkdir -p "$T3_HOME" "$SHARED_DIR" "$HOME_DIR"
 
-# Migrate state left behind by add-on versions that stored everything in /data.
-for legacy in t3 SHARED home; do
-  if [ -d "/data/$legacy" ] && [ -z "$(ls -A "$PERSIST_DIR/$legacy" 2>/dev/null)" ]; then
-    echo "Migrating /data/$legacy to $PERSIST_DIR/$legacy..."
-    cp -a "/data/$legacy/." "$PERSIST_DIR/$legacy/"
-  fi
-done
-
 # Claude Code (and any other provider CLI) stores its credentials under $HOME;
 # point HOME at the persistent directory so logins survive reinstalls.
 export HOME="$HOME_DIR"
+export T3CODE_HOME="$T3_HOME"
 
 # HA add-ons run as root. Claude Code refuses --dangerously-skip-permissions
 # under root unless it can tell it is already inside a sandbox, and T3 Code
-# always passes that flag for full-access sessions. The add-on container *is*
-# the sandbox here, so declare it.
+# passes that flag for full-access sessions. The add-on container *is* the
+# sandbox here, so declare it.
 export IS_SANDBOX=1
+
+# T3's built-in browser cannot start its own sandbox as root either.
+export T3CODE_SERVER_BROWSER_SANDBOX=0
 
 if [ -n "$ANTHROPIC_API_KEY_OPT" ] && [ "$ANTHROPIC_API_KEY_OPT" != "null" ]; then
   export ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY_OPT"
 fi
 
 # T3 Code drives plain `git` for fetch/push against https remotes and never
-# supplies credentials itself, so an unauthenticated container fails every
-# remote operation with "could not read Username for 'https://github.com'".
-# The other executor nodes solve this with a global gh credential helper, so
-# mirror that here: `gh auth setup-git` is idempotent and only needs the login
-# state, which lives under the persistent $HOME.
+# supplies credentials itself. `gh auth setup-git` is idempotent and only needs
+# the login state, which lives under the persistent $HOME.
 if [ -f "$HOME/.config/gh/hosts.yml" ]; then
   gh auth setup-git
   echo "GitHub CLI credential helper configured for $(gh api user --jq .login 2>/dev/null || echo 'unknown user')."
@@ -65,41 +50,26 @@ else
   echo "         Run: docker exec -it -e HOME=$HOME_DIR <container> gh auth login"
 fi
 
-bash /resolve-revision.sh "$SRC_DIR" "$REPO_URL" "$BRANCH" "$REVISION"
+echo "T3 Code $(t3 --version 2>/dev/null | tail -1), data directory $T3_HOME"
 
-REMOTE_SHA=$(git -C "$SRC_DIR" rev-parse HEAD)
-
-# Building the full monorepo is expensive (mobile/desktop/web packages), so
-# only rebuild when the source actually moved since the last successful build.
-# The server serves the web client from apps/web/dist, so both must be built —
-# without the web bundle every UI route answers "No static directory configured".
-if [ ! -f "$BIN_PATH" ] || [ ! -d "$WEB_DIST" ] ||
-  [ "$(cat "$BUILT_SHA_FILE" 2>/dev/null)" != "$REMOTE_SHA" ]; then
-  echo "Building T3 Code server + web client for $REMOTE_SHA (first build can take a long time)..."
-  cd "$SRC_DIR"
-  # The add-on has no TTY. When an upgrade changes the install layout, pnpm
-  # wants to purge node_modules and aborts with
-  # ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY unless it runs in CI mode.
-  CI=true vp i
-  vp run --filter t3 build:bundle
-  vp run --filter @t3tools/web build
-  echo "$REMOTE_SHA" > "$BUILT_SHA_FILE"
-else
-  echo "T3 Code server already built for $REMOTE_SHA, skipping build."
+# T3 Connect has to be authorized before the server starts. Without a terminal
+# the CLI prints a URL and a short code and waits up to 10 minutes for the
+# approval; both appear in this add-on's log. If nobody approves in time the
+# server starts anyway and the next add-on restart asks again.
+if [ "$T3_CONNECT" = "true" ]; then
+  if [ "$(t3 connect status --json 2>/dev/null | jq -r '.linked // false' 2>/dev/null)" = "true" ]; then
+    echo "T3 Connect: this environment is already linked."
+  else
+    echo "T3 Connect: not linked yet. Approve the sign-in below from any device."
+    if t3 connect link --headless; then
+      echo "T3 Connect: linked."
+    else
+      echo "WARNING: T3 Connect was not linked (no approval within the time limit, or sign-in failed)."
+      echo "         Starting the server without it. Restart the add-on to try again."
+    fi
+  fi
 fi
 
-export T3CODE_HOME="$T3_HOME"
-
-echo "Starting T3 Code server (node_id=$NODE_ID) on port $PORT..."
-echo "First boot prints a 'Token: ...' pairing credential below — see DOCS.md to register this node with cc_runner."
-
-# Helper ships in this image, and always uses the exact CLI/base-dir being served.
-# Persistent receiver config/key are provisioned separately; no secret is baked in.
-HELPER_ARGS=()
-if [ "$(jq -r 'if has("credential_publish_enabled") then .credential_publish_enabled else true end' "$CONFIG_PATH")" = "true" ]; then
-  HELPER_ARGS+=(--helper-enabled)
-fi
-exec /usr/bin/python3 /opt/t3-credential-helper/supervise.py \
-  --node-bin "$(command -v node)" --cli "$BIN_PATH" --base-dir "$T3_HOME" \
-  --node-id "$NODE_ID" --port "$PORT" \
-  --state-dir "$PERSIST_DIR/credential-publish" "${HELPER_ARGS[@]}"
+cd "$SHARED_DIR"
+echo "Starting T3 Code server on port $PORT..."
+exec t3 serve --host 0.0.0.0 --port "$PORT" --base-dir "$T3_HOME" --no-browser

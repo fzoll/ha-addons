@@ -11,5 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash -n t3-code-runner/run.sh t3-code-runner/resolve-revision.sh
-      - run: python3 -m unittest discover -s t3-code-runner/tests -p 'test_*.py' -v
+      - run: bash -n t3-code-runner/run.sh
+      # Building the image verifies the pinned T3 Code, cloudflared and gh
+      # downloads against their checksums and runs each binary once.
+      - run: docker build -t t3-code-runner-test t3-code-runner
+      - run: docker run --rm t3-code-runner-test sh -c 't3 --version && cloudflared --version && gh --version && claude --version'
