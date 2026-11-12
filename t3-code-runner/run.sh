@@ -70,6 +70,20 @@ if [ "$T3_CONNECT" = "true" ]; then
   fi
 fi
 
+# T3 probes every provider CLI once when the server starts (and again only when
+# that provider's settings change). On a Raspberry Pi the first launch of a
+# freshly installed binary is slow enough for that probe to time out, leaving
+# the provider marked "Provider executable is not installed" until someone
+# forces a re-probe. Run each CLI once here so the slow first start happens
+# before T3's probe. A failure or hang must never block the server start.
+for provider_cli in claude codex; do
+  if provider_version=$(timeout 120 "$provider_cli" --version 2>&1); then
+    echo "Provider CLI $provider_cli: $(echo "$provider_version" | tail -1)"
+  else
+    echo "WARNING: '$provider_cli --version' failed or timed out; starting the server anyway."
+  fi
+done
+
 cd "$SHARED_DIR"
 echo "Starting T3 Code server on port $PORT..."
 exec t3 serve --host 0.0.0.0 --port "$PORT" --base-dir "$T3_HOME" --no-browser
