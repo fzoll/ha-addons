@@ -16,6 +16,8 @@ a pinned official release instead.
 - Links the environment to T3 Connect on first start (optional, see below).
 - Installs the Claude Code CLI (`@anthropic-ai/claude-code`) and points `$HOME` at
   `/share/t3-code-runner/home`, so provider logins survive restarts and uninstalls.
+- Installs the Codex CLI (`@openai/codex`, pinned by `CODEX_VERSION` in the `Dockerfile`) next to
+  Claude Code, so T3 Code can use Codex as a provider.
 - Installs the GitHub CLI (`gh`) and, when it is logged in, configures it as the global git
   credential helper on every boot. T3 Code uses plain `git` for fetch and push and supplies no
   credentials of its own.
@@ -60,10 +62,16 @@ Find the container name with `docker ps` (typically `addon_local_t3-code-runner`
 
 ```bash
 docker exec -it -e HOME=/share/t3-code-runner/home <container> claude auth login
+docker exec -it -e HOME=/share/t3-code-runner/home <container> codex login --device-auth
 docker exec -it -e HOME=/share/t3-code-runner/home <container> gh auth login
 ```
 
-Both logins are stored under `/share`, so they persist across restarts and reinstalls. `run.sh`
+Codex needs device code sign-in to be enabled for your ChatGPT account first, at
+<https://chatgpt.com/#settings/Security>; without it `codex login --device-auth` is refused. The
+command prints a URL and a code: open the URL on any device and enter the code. The Codex login is
+stored in `~/.codex`, that is `/share/t3-code-runner/home/.codex`.
+
+All logins are stored under `/share`, so they persist across restarts and reinstalls. `run.sh`
 warns in the add-on log when the GitHub login is missing.
 
 ## Upgrading T3 Code
@@ -74,7 +82,8 @@ release, change these in one pull request:
 1. `T3_VERSION` and both `T3_SHA256_*` values in the `Dockerfile` (from the release's `SHA256SUMS`).
 2. `CLOUDFLARED_VERSION` and its checksums, if the new T3 release expects another version
    (`t3 connect status --json` reports it as `relayClient.version`).
-3. `version` in `config.yaml` — Home Assistant only installs a change when the version grows.
+3. `CODEX_VERSION` in the `Dockerfile`, to move Codex to a new release.
+4. `version` in `config.yaml` — Home Assistant only installs a change when the version grows.
 
 ## State from add-on versions before 0.5.0
 

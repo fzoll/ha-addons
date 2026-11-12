@@ -14,6 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install -g --allow-scripts=@anthropic-ai/claude-code @anthropic-ai/claude-code \
     && claude --version
 
+# Codex CLI — the OpenAI provider T3 Code drives.
+#
+# Pinned like T3 itself so every node runs the same build. To upgrade, change
+# CODEX_VERSION and bump the add-on version in config.yaml. The binary ships as
+# a platform-native optional dependency, so the --version check also proves the
+# right one was installed.
+ARG CODEX_VERSION=0.167.2
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" \
+    && codex --version
+
 # GitHub CLI — T3 Code and its agents use `gh` for pull requests, and git uses
 # it as the credential helper.
 ARG GH_VERSION=2.63.2

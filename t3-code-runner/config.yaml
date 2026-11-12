@@ -1,5 +1,5 @@
 name: T3 Code Runner
-version: "0.5.0"
+version: "0.5.1"
 slug: t3-code-runner
 description: Official T3 Code server — always-on T3 Code environment on this Home Assistant host
 url: https://github.com/fzoll/ha-addons
