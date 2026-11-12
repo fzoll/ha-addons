@@ -77,7 +77,7 @@ fi
 # forces a re-probe. Run each CLI once here so the slow first start happens
 # before T3's probe. A failure or hang must never block the server start.
 for provider_cli in claude codex; do
-  if provider_version=$(timeout 120 "$provider_cli" --version 2>&1); then
+  if provider_version=$(timeout --kill-after=5 120 "$provider_cli" --version 2>&1); then
     echo "Provider CLI $provider_cli: $(echo "$provider_version" | tail -1)"
   else
     echo "WARNING: '$provider_cli --version' failed or timed out; starting the server anyway."
