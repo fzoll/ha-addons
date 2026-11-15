@@ -22,6 +22,14 @@ a repó *Settings → Actions → General → Allow GitHub Actions to create and
 beállítás (különben a `gh pr create` hibázik). A workflow a PR-t maga merge-öli (`gh pr merge --squash --delete-branch`), kézi lépés nincs
 (legfeljebb a HA Update, ha az add-onon nincs auto-update).
 
+## t3-code-runner: automatikus T3-verzió bump
+
+A `t3-code-runner/Dockerfile` a pingdotgg/t3code egy stabil kiadását pineli (`T3_VERSION`, a két
+tarball-checksum és a hozzá tartozó `CLOUDFLARED_*`). A `.github/workflows/t3-code-runner-bump.yml`
+éjjelente megnézi a legfrissebb stabil kiadást, és ha újabb, egy PR-ban (`bot/t3-code-runner-t3-<verzió>`)
+átírja ezeket, bumpolja az add-on verzióját, majd merge-öli. A cloudflared verziót a kiadás binárisából
+olvassa ki. Kézzel csak akkor nyúlj hozzá, ha a workflow hibával áll meg.
+
 ## Review checklist
 
 - Addon-fájl változott? → version bump megvan?

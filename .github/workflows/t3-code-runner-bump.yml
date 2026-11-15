@@ -1,0 +1,167 @@
+name: T3 Code version bump
+# Keeps the t3-code-runner add-on on the newest stable T3 Code release.
+# The Dockerfile pins T3_VERSION, its two tarball checksums, and the
+# cloudflared version that release expects. When a newer stable release
+# exists, this workflow updates all of them together, bumps the add-on
+# version, opens a PR and merges it; Home Assistant then installs the update
+# (auto-update is on for the add-on).
+on:
+  schedule:
+    - cron: "23 2 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: t3-code-runner-bump
+  cancel-in-progress: false
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DOCKERFILE: t3-code-runner/Dockerfile
+      CONFIG: t3-code-runner/config.yaml
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the newest stable T3 Code release
+        id: release
+        run: |
+          set -euo pipefail
+          tag=$(gh release list -R pingdotgg/t3code --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName')
+          version=${tag#v}
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected stable release tag: '$tag'."
+            exit 1
+          fi
+          current=$(sed -nE 's/^ARG T3_VERSION=(.*)$/\1/p' "$DOCKERFILE")
+          echo "Pinned: $current, newest stable: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$version" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          elif [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" != "$version" ]; then
+            echo "Pinned version is newer than the newest stable release; nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve checksums and the cloudflared version
+        if: steps.release.outputs.changed == 'true'
+        id: pins
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/t3"
+          mkdir -p "$work" && cd "$work"
+          gh release download "v$VERSION" -R pingdotgg/t3code -p SHA256SUMS -p "t3-$VERSION-linux-x64.tar.gz"
+          sum_arm64=$(awk -v f="t3-$VERSION-linux-arm64.tar.gz" '$2==f {print $1}' SHA256SUMS)
+          sum_x64=$(awk -v f="t3-$VERSION-linux-x64.tar.gz" '$2==f {print $1}' SHA256SUMS)
+          for s in "$sum_arm64" "$sum_x64"; do
+            if [[ ! "$s" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::SHA256SUMS of v$VERSION has no linux arm64/x64 tarball checksum."
+              exit 1
+            fi
+          done
+          echo "$sum_x64  t3-$VERSION-linux-x64.tar.gz" | sha256sum -c -
+          tar -xzf "t3-$VERSION-linux-x64.tar.gz"
+          bin=$(find . -type f -name t3 -perm -u+x | head -1)
+          "$bin" --version
+
+          # The release downloads its relay client from a fixed cloudflared
+          # release; the URL is embedded in the binary. Exactly one is expected.
+          cf=$(grep -a -o -E 'cloudflared/releases/download/[0-9]+\.[0-9]+\.[0-9]+' "$bin" | sort -u | sed 's#.*/##')
+          if [ "$(printf '%s\n' "$cf" | grep -c .)" -ne 1 ]; then
+            echo "::error::Expected exactly one cloudflared version in t3 v$VERSION, found: '$cf'."
+            exit 1
+          fi
+          cf_current=$(sed -nE 's/^ARG CLOUDFLARED_VERSION=(.*)$/\1/p' "$GITHUB_WORKSPACE/$DOCKERFILE")
+          if [ "$cf" = "$cf_current" ]; then
+            cf_arm64=$(sed -nE 's/^ARG CLOUDFLARED_SHA256_ARM64=(.*)$/\1/p' "$GITHUB_WORKSPACE/$DOCKERFILE")
+            cf_amd64=$(sed -nE 's/^ARG CLOUDFLARED_SHA256_AMD64=(.*)$/\1/p' "$GITHUB_WORKSPACE/$DOCKERFILE")
+          else
+            base="https://github.com/cloudflare/cloudflared/releases/download/$cf"
+            curl -fsSL "$base/cloudflared-linux-arm64" -o cf-arm64
+            curl -fsSL "$base/cloudflared-linux-amd64" -o cf-amd64
+            cf_arm64=$(sha256sum cf-arm64 | cut -d' ' -f1)
+            cf_amd64=$(sha256sum cf-amd64 | cut -d' ' -f1)
+            chmod +x cf-amd64 && ./cf-amd64 --version
+          fi
+          {
+            echo "t3_arm64=$sum_arm64"
+            echo "t3_x64=$sum_x64"
+            echo "cf_version=$cf"
+            echo "cf_arm64=$cf_arm64"
+            echo "cf_amd64=$cf_amd64"
+          } >> "$GITHUB_OUTPUT"
+          rm -rf "$work"
+
+      - name: Open and merge the bump PR
+        if: steps.release.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          T3_ARM64: ${{ steps.pins.outputs.t3_arm64 }}
+          T3_X64: ${{ steps.pins.outputs.t3_x64 }}
+          CF_VERSION: ${{ steps.pins.outputs.cf_version }}
+          CF_ARM64: ${{ steps.pins.outputs.cf_arm64 }}
+          CF_AMD64: ${{ steps.pins.outputs.cf_amd64 }}
+        run: |
+          set -euo pipefail
+          branch="bot/t3-code-runner-t3-$VERSION"
+
+          # Only an open PR for this version counts as handled; a branch left
+          # behind by a failed PR creation is rebuilt and force-pushed below.
+          pr_url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')
+          if [ -n "$pr_url" ]; then
+            echo "An open PR for $branch already exists ($pr_url); merging it."
+          else
+            old_version=$(sed -nE 's/^version: "?([0-9]+\.[0-9]+\.[0-9]+)"?$/\1/p' "$CONFIG")
+            if [ -z "$old_version" ]; then
+              echo "::error::Cannot parse version from $CONFIG."
+              exit 1
+            fi
+            IFS=. read -r major minor patch <<< "$old_version"
+            new_version="$major.$minor.$((patch + 1))"
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$branch"
+            sed -i -E \
+              -e "s/^ARG T3_VERSION=.*/ARG T3_VERSION=$VERSION/" \
+              -e "s/^ARG T3_SHA256_ARM64=.*/ARG T3_SHA256_ARM64=$T3_ARM64/" \
+              -e "s/^ARG T3_SHA256_X64=.*/ARG T3_SHA256_X64=$T3_X64/" \
+              -e "s/^ARG CLOUDFLARED_VERSION=.*/ARG CLOUDFLARED_VERSION=$CF_VERSION/" \
+              -e "s/^ARG CLOUDFLARED_SHA256_ARM64=.*/ARG CLOUDFLARED_SHA256_ARM64=$CF_ARM64/" \
+              -e "s/^ARG CLOUDFLARED_SHA256_AMD64=.*/ARG CLOUDFLARED_SHA256_AMD64=$CF_AMD64/" \
+              "$DOCKERFILE"
+            sed -i -E "s/^version: .*/version: \"$new_version\"/" "$CONFIG"
+            git add "$DOCKERFILE" "$CONFIG"
+            title="feat(t3-code-runner): T3 Code $VERSION ($new_version)"
+            git commit -m "$title"
+            git push --force origin "$branch"
+
+            body="Automatic bump to the newest stable T3 Code release: [v$VERSION](https://github.com/pingdotgg/t3code/releases/tag/v$VERSION)."
+            body+=$'\n\n'"- Tarball checksums from the release's SHA256SUMS; the x64 binary was verified and run."
+            body+=$'\n'"- cloudflared: $CF_VERSION (the version this release downloads)."
+            body+=$'\n\n'"Automatically merged by the bump workflow; Home Assistant installs it with auto-update on."
+            if ! pr_url=$(gh pr create --head "$branch" --title "$title" --body "$body"); then
+              echo "::error::PR creation failed. Enable Settings > Actions > General > 'Allow GitHub Actions to create and approve pull requests'."
+              exit 1
+            fi
+            echo "Opened $pr_url"
+          fi
+
+          # Older bump PRs are superseded by the newest release.
+          gh pr list --state open --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("bot/t3-code-runner-t3-")) | select(.headRefName != "'"$branch"'") | .number' |
+            while read -r number; do
+              gh pr close "$number" --delete-branch --comment "Superseded by the bump to T3 Code $VERSION."
+            done
+
+          if ! gh pr merge "$pr_url" --squash --delete-branch; then
+            echo "::error::Merging $pr_url failed."
+            exit 1
+          fi
+          echo "Merged $pr_url"
