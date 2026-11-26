@@ -46,9 +46,9 @@ RUN set -eux; \
 # clients and servers must speak the same protocol version. To upgrade, change
 # T3_VERSION and both checksums (from the release's SHA256SUMS file) together,
 # and bump the add-on version in config.yaml.
-ARG T3_VERSION=0.1.11
-ARG T3_SHA256_ARM64=7d90a5af032fe0988a616403e0f51a6cb68eff7ed7a84bc40999cc3997dffd71
-ARG T3_SHA256_X64=2b691c07f5bcb5adea4a863d5324aae7db21bd6d82280cec7787836dcaa013e1
+ARG T3_VERSION=0.1.12
+ARG T3_SHA256_ARM64=29cfbab19117aa436f1700382afb9cfe5d7ef47609cabba9356271a0bca5ad98
+ARG T3_SHA256_X64=9ba3db46e3554fb9970fd5ede9e823c2f6d6f6763f40340bd4c8ef6b09501c54
 RUN set -eux; \
     case "$(dpkg --print-architecture)" in \
       arm64) T3_ARCH=arm64; T3_SHA256="${T3_SHA256_ARM64}" ;; \
